@@ -1,0 +1,276 @@
+\documentclass[12pt, a4paper]{article}
+
+\usepackage[english]{babel}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\usepackage{xcolor}
+\usepackage{fancyhdr}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{hyperref}
+\usepackage{cite}
+\usepackage{enumerate}
+
+\pgfplotsset{compat=1.18}
+\geometry{margin=2.5cm}
+\setlength{\headheight}{14.5pt}
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{Processus Stochastiques}
+\lhead{Projet de Diffusion}
+\cfoot{\thepage}
+
+\title{\textbf{Projet de Modélisation par Diffusion}\\ 
+       \large{Implémentation et Analyse de Modèles Génératifs}}
+\author{Lesech Erwann, Le Riboter Aymeric}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\tableofcontents
+\newpage
+
+\section{Introduction}
+
+Les modèles de diffusion représentent une classe d'algorithmes génératifs qui ont révolutionné le domaine de la génération d'images et de données. Ces modèles apprennent à générer des échantillons en inversant un processus de bruit gaussien progressif. Ce projet vise à implémenter et analyser différentes variantes de modèles de diffusion, depuis des cas bidimensionnels simples jusqu'à la génération d'images complexes.
+
+\section{Objectifs du Projet}
+
+\subsection{Objectifs Principaux}
+\begin{itemize}
+    \item Comprendre les fondements théoriques des modèles de diffusion
+    \item Implémenter un modèle de diffusion sur des données 2D
+    \item Étendre l'implémentation à la génération d'images MNIST
+    \item Analyser les performances selon différentes architectures et hyperparamètres
+    \item Évaluer la qualité des échantillons générés
+\end{itemize}
+
+\subsection{Objectifs Avancés}
+\begin{itemize}
+    \item Implémenter des optimisations décrites dans la littérature récente
+    \item Expérimenter avec des images de plus haute résolution (32×32)
+    \item Explorer la génération d'images RGB (3 canaux)
+\end{itemize}
+
+\section{Méthodologie}
+
+\subsection{Phase 1: Diffusion 2D}
+La première phase du projet consiste à implémenter un modèle de diffusion sur des données bidimensionnelles pour visualiser et comprendre le processus.
+
+\textbf{Données:} Distributions 2D simples (gaussiennes, spirales, etc.)
+\textbf{Visualisation:} Plots du processus de débruitage étape par étape
+
+\subsection{Phase 2: Images MNIST 16×16}
+Extension à la génération d'images en commençant par une seule classe (chiffre 0) du dataset MNIST redimensionné en 16×16 pixels.
+
+\textbf{Architecture:} Réseau de neurones adapté aux images de petite taille
+\textbf{Processus:} Entraînement du modèle en bruitant progressivement les images selon $\mathcal{N}(0,1)$
+
+\subsection{Phase 3: Multi-classes MNIST}
+Expansion à plusieurs classes différentes pour analyser la capacité du modèle à distinguer et générer différents types d'images.
+
+\textbf{Analyse:} Étude de l'impact des différentes distributions sur la génération
+
+\subsection{Phase 4: Amélioration de la Résolution}
+Si le temps le permet et que l'entraînement est efficace:
+\begin{itemize}
+    \item Passage à des images 32×32 pixels
+    \item Expérimentation avec des images RGB (3 canaux)
+\end{itemize}
+
+\section{Processus de Diffusion}
+
+\subsection{Le processus de bruitage - noising process}
+
+Prenons une donnée $x_0$. Nous allons la bruiter de manière à suivre une dynamique de Langevin:
+
+$$x_t = \sqrt{\sigma}x_{t-1} + \sqrt{1-\sigma}\xi$$
+$$\sim \mathcal{N}(\sqrt{\sigma}x_{t-1}, (1-\sigma)I)$$
+
+Nous pouvons même exprimer $x_t$ en fonction de $x_0$:
+
+$$x_t = \sqrt{\prod_{i=0}^{t-1}\sigma_i}x_0 + \sqrt{1-\prod_{i=0}^{t-1}\sigma_i}\xi$$
+
+$$\sim \mathcal{N}\left(\sqrt{\prod_{i=0}^{t-1}\sigma_i}x_0, 1-\prod_{i=0}^{t-1}\sigma_i I\right) = \mathcal{N}(\sqrt{\overline{\sigma}_t}x_0, 1-\overline{\sigma}_t I)$$
+
+où $\overline{\sigma}_t = \prod_{i=0}^{t-1}\sigma_i$ représente le produit cumulé des coefficients de bruit et $\xi$ est un bruit gaussien $\mathcal{N}(0,I)$.
+
+\subsection{Le processus de débruitage - denoising process}
+
+L'objectif principal du modèle de diffusion est d'inverser le processus de bruitage. Le processus inverse doit également suivre une dynamique stochastique contrôlée.
+
+\textbf{Le défi du débruitage:}
+Contrairement au processus de bruitage qui est direct et déterministe, le débruitage présente une complexité fondamentale:
+
+\begin{itemize}
+    \item \textbf{Bruitage (forward process):} Générer $x_t$ selon $\mathcal{N}(\sqrt{\overline{\sigma}_t} x_0, (1-\overline{\sigma}_t)I)$ est direct car nous connaissons $x_0$
+    \item \textbf{Débruitage (reverse process):} Générer $x_{t-1}$ à partir de $x_t$ nécessite de connaître la moyenne conditionnelle $\mu(x_t,t)$
+\end{itemize}
+
+\textbf{Problématique centrale:} Comment déterminer $\mu(x_t,t)$ pour le processus inverse?
+
+Nous devons générer $x_{t-1}$ selon une distribution $\mathcal{N}(\mu(x_t,t), \sigma^2 I)$ où $\mu(x_t,t)$ représente la moyenne conditionnelle optimale que nous devons apprendre.
+
+\textbf{Problème:} La fonction $\mu(x_t,t)$ n'est pas connue analytiquement et doit être approximée.
+
+\subsection{Approche par réseaux de neurones}
+
+C'est à cette étape que nous passons de la théorie probabiliste à l'apprentissage automatique pratique. L'idée clé est d'utiliser un réseau de neurones pour approximer la fonction $\mu(x_t,t)$ inconnue.
+
+\textbf{Reformulation du problème:}
+Plutôt que de prédire directement $\mu(x_t,t)$, nous utilisons une transformation mathématique élégante. En partant de la relation:
+
+$$x_t = \sqrt{\overline{\sigma}_t}x_0 + \sqrt{1-\overline{\sigma}_t}\xi_0$$
+
+On peut montrer (par calcul variationnel) que la moyenne optimale s'exprime comme:
+
+$$\mu(x_t,t) = \frac{1}{\sigma_t}x_t - \frac{1-\sigma_t}{\sqrt{1-\overline{\sigma}_t}}\xi_0$$
+
+\textbf{Stratégie d'apprentissage:}
+Au lieu de prédire $\mu(x_t,t)$ directement, nous entraînons un réseau $\epsilon_\theta(x_t, t)$ à prédire le bruit $\xi_0$ qui a été ajouté lors du processus de bruitage. Cette approche est plus stable et efficace en pratique.
+
+\textbf{Avantage:} Prédire le bruit est plus simple car il s'agit d'une propriété intrinsèque du processus de diffusion, indépendante de la distribution des données originales.
+
+\subsection{Fonction de Perte}
+La fonction de perte utilisée pour l'entraînement est une erreur quadratique moyenne (MSE) entre le bruit réel et le bruit prédit:
+
+$$L = \mathbb{E}_{t,x_0,\epsilon}[||\epsilon - \epsilon_\theta(x_t, t)||^2]$$
+
+\textbf{Composants de la fonction de perte:}
+\begin{itemize}
+    \item $\epsilon \sim \mathcal{N}(0,I)$: le bruit gaussien réellement ajouté lors du bruitage
+    \item $\epsilon_\theta(x_t, t)$: la prédiction du réseau de neurones
+    \item $t$: le pas de temps, échantillonné uniformément dans $\{1, ..., T\}$
+    \item $x_0$: l'échantillon original de données
+\end{itemize}
+
+\textbf{Interprétation:} Cette fonction de perte encourage le réseau à apprendre à "deviner" quel bruit a été ajouté à chaque étape, ce qui lui permet ensuite de l'enlever lors de la génération.
+
+\subsection{Architectures de Réseaux}
+\textbf{Choix d'architecture selon le type de données:}
+\begin{itemize}
+    \item \textbf{U-Net modifié}: Pour les images (MNIST 16×16, 32×32)
+    \begin{itemize}
+        \item Encoder-decoder avec connexions résiduelles
+        \item Intégration de l'embedding temporel à chaque couche
+        \item Normalisation par groupes (GroupNorm)
+    \end{itemize}
+    \item \textbf{MLP avec embedding temporel}: Pour les données 2D simples
+    \begin{itemize}
+        \item Couches denses avec activations ReLU/GELU
+        \item Embedding sinusoïdal pour encoder le temps $t$
+        \item Normalization et dropout pour la régularisation
+    \end{itemize}
+    \item \textbf{Mécanismes d'attention}: Pour les versions avancées
+    \begin{itemize}
+        \item Self-attention pour capturer les dépendances spatiales
+        \item Cross-attention pour conditionner sur des labels
+    \end{itemize}
+\end{itemize}
+
+\section{Métriques d'Évaluation}
+
+L'évaluation des modèles de diffusion nécessite une approche multi-dimensionnelle combinant métriques quantitatives et qualitatives.
+
+\subsection{Métriques Quantitatives}
+
+\textbf{Pour les données 2D:}
+\begin{itemize}
+    \item \textbf{Divergence de Kullback-Leibler (KL)}: Mesure la différence entre la distribution apprise et la distribution réelle
+    $$D_{KL}(P||Q) = \sum_x P(x) \log\frac{P(x)}{Q(x)}$$
+    \textit{Utilisation:} Comparaison directe des densités de probabilité pour les distributions 2D simples
+    
+    \item \textbf{Distance de Wasserstein}: Alternative robuste à la divergence KL
+    \textit{Avantage:} Moins sensible aux queues de distribution
+\end{itemize}
+
+\textbf{Pour les images:}
+\begin{itemize}
+    \item \textbf{Fréchet Inception Distance (FID)}: Métrique standard pour évaluer la qualité des images générées
+    $$FID = ||\mu_r - \mu_g||^2 + Tr(\Sigma_r + \Sigma_g - 2(\Sigma_r \Sigma_g)^{1/2})$$
+    où $\mu_r, \Sigma_r$ et $\mu_g, \Sigma_g$ représentent les statistiques des features extraites par un réseau pré-entraîné
+    
+    \item \textbf{Inception Score (IS)}: Mesure la qualité et la diversité
+    $$IS = \exp(\mathbb{E}_x[D_{KL}(p(y|x)||p(y))])$$
+\end{itemize}
+
+\subsection{Métriques Qualitatives}
+\textbf{Analyse visuelle systématique:}
+\begin{itemize}
+    \item \textbf{Inspection des échantillons}: Évaluation de la netteté et du réalisme
+    \item \textbf{Analyse de diversité}: Vérification que le modèle ne reproduit pas toujours les mêmes échantillons (mode collapse)
+    \item \textbf{Étude de convergence}: Suivi de l'évolution de la perte et de la qualité des échantillons pendant l'entraînement
+    \item \textbf{Interpolation}: Test de la continuité de l'espace latent en interpolant entre échantillons
+\end{itemize}
+
+\textbf{Métriques spécifiques au projet:}
+\begin{itemize}
+    \item Temps de convergence de l'algorithme d'entraînement
+    \item Stabilité numérique du processus de génération
+    \item Qualité de reconstruction pour différents nombres d'étapes de débruitage
+\end{itemize}
+
+\section{Iméplementation des Algorithmes}
+
+\subsection{Algorithme d'entraînement}
+
+\noindent\fbox{%
+\parbox{\textwidth}{%
+\textbf{Algorithme 1: Entrainement du modèle de diffusion}
+\begin{enumerate}
+    \item Sélectionner $x_0 \sim p(x_0)$
+    \item Tirer aléatoirement $t \sim \mathcal{U}(\{1, ..., T\})$
+    \item Tirer aléatoirement $\xi_0 \sim \mathcal{N}(0, I)$
+    \item Calculer $x_t = \sqrt{\overline{\sigma}_t}x_0 + \sqrt{1-\overline{\sigma}_t}\xi_0$
+    \item \textbf{while} loss > seuil \textbf{do}
+    \begin{enumerate}
+        \item[6.] Descente de gradient sur $||\xi_0 - \xi_\theta(x_t, t)||_2^2$
+    \end{enumerate}
+    \item[7.] \textbf{end while}
+\end{enumerate}
+}}
+
+\subsection{Algorithme de génération}
+
+\noindent\fbox{%
+\parbox{\textwidth}{%
+\textbf{Algorithme 2: Génération d'échantillons via le modèle de diffusion}
+\begin{enumerate}
+    \item Tirer aléatoirement $x_T \sim \mathcal{N}(0, I)$
+    \item \textbf{for} $t \in \{T, ..., 1\}$ \textbf{do}
+    \begin{enumerate}
+        \item[3.] \textbf{Si} $t > 1$, tirer aléatoirement $z \sim \mathcal{N}(0, I)$, sinon $z = 0$.
+        \item[4.] $x_{t-1} = \frac{1}{\sqrt{\sigma_t}}\left(x_t - \frac{1-\sigma_t}{\sqrt{1-\overline{\sigma}_t}}\xi_\theta(x_t, t)\right) + \beta_t z$
+    \end{enumerate}
+    \item[5.] \textbf{end for}
+\end{enumerate}
+}}
+
+\section{Références}
+
+\begin{thebibliography}{99}
+\bibitem{karras2022elucidating}
+Karras, T., Aittala, M., Aila, T., \& Laine, S. (2022). 
+\textit{Elucidating the Design Space of Diffusion-Based Generative Models}. 
+arXiv preprint arXiv:2206.00364.
+
+\bibitem{ho2020denoising}
+Ho, J., Jain, A., \& Abbeel, P. (2020). 
+\textit{Denoising diffusion probabilistic models}. 
+Advances in neural information processing systems, 33, 6840-6851.
+
+\bibitem{song2020denoising}
+Song, J., Meng, C., \& Ermon, S. (2020). 
+\textit{Denoising diffusion implicit models}. 
+arXiv preprint arXiv:2010.02502.
+\end{thebibliography}
+
+\end{document}
