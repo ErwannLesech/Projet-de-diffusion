@@ -45,11 +45,25 @@ def noise_x_t(x_0: torch.Tensor, t: int, sigma_list: Sequence[float]) -> torch.T
 
 
 def train(epochs: int, batch_size: int, model, optimizer, loss_fct, data_size: int, x_init: torch.Tensor, T: int, sigma_list: Sequence[float]):
-    """A small training loop used by the notebook examples.
-
-    This function is intentionally minimal; it assumes `x_init` contains
-    the dataset (first dimension = data_size) and that `model` accepts
-    `(x_noisy, t)` returning predicted noise.
+    """Training loop following Algorithm 1 from the project specification.
+    
+    Implements the exact algorithm described in the LaTeX document:
+    1. Select x_0 ~ p(x_0)
+    2. Randomly draw t ~ U({1, ..., T})
+    3. Randomly draw ξ_0 ~ N(0, I)
+    4. Calculate x_t = sqrt(α̅_t)x_0 + sqrt(1-α̅_t)ξ_0
+    5. Gradient descent on ||ξ_0 - ξ_θ(x_t, t)||_2^2
+    
+    Args:
+        epochs: Number of training epochs
+        batch_size: Size of mini-batches
+        model: Neural network that predicts noise ξ_θ(x_t, t)
+        optimizer: Optimizer for the model parameters
+        loss_fct: Loss function (should be MSE)
+        data_size: Size of the dataset
+        x_init: Dataset tensor (first dimension = data_size)
+        T: Number of diffusion timesteps
+        sigma_list: Sequence of sigma values for the diffusion schedule
     """
     for epoch in range(epochs):
         model.train()
@@ -58,21 +72,36 @@ def train(epochs: int, batch_size: int, model, optimizer, loss_fct, data_size: i
 
         for i in range(0, data_size, batch_size):
             indices = perm[i : i + batch_size]
-            x_batch = x_init[indices]
+            x_batch = x_init[indices]  # Step 1: Select x_0 ~ p(x_0)
 
-            # For each item in the batch, sample a random t and apply noising
+            # Step 2: Randomly draw t ~ U({1, ..., T})
             t = torch.randint(1, T + 1, (len(x_batch),)).to(device)
-            x_noisy = torch.stack([
-                noise_x_t(x.unsqueeze(0), t_i.item(), sigma_list).squeeze(0)
-                for x, t_i in zip(x_batch, t)
-            ])
+            
+            # Step 3: Randomly draw ξ_0 ~ N(0, I) - IMPORTANT: we need to store this noise!
+            noise_batch = torch.randn_like(x_batch).to(device)
+            
+            # Step 4: Calculate x_t = sqrt(α̅_t)x_0 + sqrt(1-α̅_t)ξ_0
+            x_noisy_batch = []
+            for j, (x_0, t_i, noise) in enumerate(zip(x_batch, t, noise_batch)):
+                # Use cumulative product α̅_t = ∏_{i=0}^{t-1} σ_i
+                t_idx = int(t_i.item()) - 1  # Convert to int for indexing
+                alpha_bar_t = float(np.cumprod(sigma_list, axis=0)[t_idx])
+                x_t = math.sqrt(alpha_bar_t) * x_0 + math.sqrt(1.0 - alpha_bar_t) * noise
+                x_noisy_batch.append(x_t)
+            
+            x_noisy_batch = torch.stack(x_noisy_batch)
 
             optimizer.zero_grad()
-            predicted_noise = model(x_noisy, t)
-            loss = loss_fct(predicted_noise, x_batch - x_noisy)
+            
+            # Model predicts the noise ξ_θ(x_t, t)
+            predicted_noise = model(x_noisy_batch, t)
+            
+            # Step 5: Gradient descent on ||ξ_0 - ξ_θ(x_t, t)||_2^2
+            loss = loss_fct(predicted_noise, noise_batch)
             loss.backward()
             optimizer.step()
 
             epoch_loss += loss.item()
-        avg_loss = epoch_loss / (data_size / batch_size)
+        
+        avg_loss = epoch_loss / (data_size // batch_size)
         print(f"Epoch [{epoch + 1}/{epochs}], Loss: {avg_loss:.4f}")
