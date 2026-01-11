@@ -54,11 +54,11 @@ Fort de notre compréhension acquise sur les données 2D, nous avons entrepris l
 
 Nous avons débuté avec des images de faible résolution (16×16 pixels) pour limiter les coûts de calcul et accélérer les itérations de développement. Nous nous sommes d'ailleurs limités initialement à la génération d'une seule classe de chiffres (le chiffre 6) pour simplifier le problème. Cette approche uni-classe nous a permis de valider notre implémentation et d'ajuster les hyperparamètres avant de généraliser à toutes les classes.
 
-Notre première approche utilisait un schedule linéaire avec $\sigma_t$ variant de 0.0001 à 0.2 sur 50 étapes. Les résultats montraient une tendance à générer des images trop floues, suggérant que le modèle avait du mal à capturer les détails fins. Après analyse, nous avons réalisé que ce schedule était trop agressif : le bruit s'accumulait trop rapidement, rendant l'inversion difficile. Nous avons donc expérimenté avec des schedules plus doux en réduisant la borne supérieure à 0.02 et en augmentant le nombre d'étapes à 1000. Cette modification a significativement amélioré la netteté des images générées.
+Notre première approche utilisait un schedule linéaire avec $\sigma_t$ variant de 0.0001 à 0.2 sur 50 étapes. Les résultats montraient une tendance à générer des images trop floues, suggérant que le modèle avait du mal à capturer les détails fins. Après analyse, nous avons réalisé que ce schedule était trop agressif : le bruit s'accumulait trop rapidement, rendant l'inversion difficile. Nous avons donc expérimenté avec des schedules plus doux en augmentant le nombre d'étapes à 1000. Cette modification a significativement amélioré la netteté des images générées.
 
 \subsection{Phase 3 : Généralisation avec CIFAR-10}
 
-La dernière phase du projet consistait à appliquer notre approche à des images RGB de résolution 32×32 issues du dataset CIFAR-10. Cette transition vers des images couleur a triplé la dimensionnalité des données (passage de 1 canal à 3 canaux), augmentant considérablement la complexité du problème d'apprentissage. De plus, CIFAR-10 contient des images bien plus variées que MNIST (avions, voitures, animaux, etc.), ce qui représente un défi supplémentaire pour le modèle.
+La dernière phase du projet consistait à appliquer notre approche à des images RGB de résolution 32×32 issues du dataset CIFAR-10 (dataset \url{https://www.cs.toronto.edu/~kriz/cifar.html} représentant 10 classes d'images incluant avions, voitures, animaux, etc.).  Cette transition vers des images couleur a triplé la dimensionnalité des données (passage de 1 canal à 3 canaux), augmentant considérablement la complexité du problème d'apprentissage. De plus, CIFAR-10 contient des images bien plus variées que MNIST (avions, voitures, animaux, etc.), ce qui représente un défi supplémentaire pour le modèle.
 
 Nous avons adapté notre architecture U-Net pour traiter des entrées à 3 canaux. L'entraînement s'est révélé plus long et plus instable que pour MNIST. Nous avons observé que le modèle avait tendance à générer des images très floues et manquant de cohérence structurelle. Cette difficulté s'explique par deux facteurs : d'une part, la diversité des classes dans CIFAR-10 avec 3 canaux de couleurs rend la distribution des données plus ardu ; d'autre part, la résolution accrue amplifie les erreurs de prédiction du bruit.
 
@@ -125,6 +125,13 @@ Fort de cette réussite, nous avons ensuite étendu notre approche à un modèle
 \subsection{Résultats sur CIFAR-10}
 
 Les résultats sur CIFAR-10 sont plus mitigés. Bien que le modèle génère des images qui possèdent des structures de couleurs cohérentes et suggèrent parfois la présence d'objets, la netteté reste limitée et les détails fins sont absents. Cette différence de performance par rapport à MNIST s'explique par plusieurs facteurs : la dimensionnalité accrue (3 canaux versus 1), la plus grande variabilité inter-classes de CIFAR-10, et les limitations de notre architecture U-Net relativement simple. Les modèles de diffusion de pointe pour CIFAR-10 utilisent des U-Nets beaucoup plus profonds avec des mécanismes d'attention et sont entraînés sur des centaines de milliers d'itérations, ce qui dépasse largement nos ressources disponibles.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.99\textwidth]{figures/cifar_full.png}
+\caption{Échantillons générés par le meilleur modèle à partir de CIFAR-10.}
+\label{fig:cifar_full}
+\end{figure}
 
 \section*{Conclusion}
 
