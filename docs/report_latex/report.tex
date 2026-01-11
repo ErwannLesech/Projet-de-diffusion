@@ -26,7 +26,7 @@
 \maketitle
 \thispagestyle{empty}
 
-\vspace{0.5cm}
+\vspace{-0.5cm}
 
 \section*{Introduction}
 
@@ -34,7 +34,7 @@ Ce projet s'inscrit dans le cadre du cours de processus stochastiques et vise à
 
 \section{Fondements théoriques et approche méthodologique}
 
-Les modèles de diffusion reposent sur l'idée d'apprendre à inverser un processus de bruitage progressif appliqué aux données. Le processus direct, appelé \textit{forward process} ou processus de bruitage, transforme graduellement une donnée $x_0$ issue de la distribution des données en un bruit gaussien pur $x_T \sim \mathcal{N}(0, I)$. Cette transformation suit une dynamique de Langevin discrète où chaque étape ajoute un bruit gaussien contrôlé par un paramètre $\sigma_t$. Formellement, nous avons : $x_t = \sqrt{\sigma_t}x_{t-1} + \sqrt{1-\sigma_t}\xi$ où $\xi \sim \mathcal{N}(0, I)$. En développant récursivement cette relation, on obtient une expression directe de $x_t$ en fonction de $x_0$ : $x_t = \sqrt{\bar{\alpha}_t}x_0 + \sqrt{1-\bar{\alpha}_t}\xi_0$ avec $\bar{\alpha}_t = \prod_{i=1}^{t}\sigma_i$ le produit cumulé des coefficients.
+Les modèles de diffusion reposent sur l'idée d'apprendre à inverser un processus de bruitage progressif appliqué aux données. Le processus direct, appelé \textit{noising process} ou processus de bruitage, transforme graduellement une donnée $x_0$ issue de la distribution des données en un bruit gaussien pur $x_T \sim \mathcal{N}(0, I)$. Cette transformation suit une dynamique de Langevin discrète où chaque étape ajoute un bruit gaussien contrôlé par un paramètre $\sigma_t$. Formellement, nous avons : $x_t = \sqrt{\sigma_t}x_{t-1} + \sqrt{1-\sigma_t}\xi$ où $\xi \sim \mathcal{N}(0, I)$. En développant récursivement cette relation, on obtient une expression directe de $x_t$ en fonction de $x_0$ : $x_t = \sqrt{\bar{\alpha}_t}x_0 + \sqrt{1-\bar{\alpha}_t}\xi_0$ avec $\bar{\alpha}_t = \prod_{i=1}^{t}\sigma_i$ le produit cumulé des coefficients.
 
 Le défi principal consiste à inverser ce processus pour générer de nouvelles données en partant d'un bruit aléatoire. Contrairement au processus de bruitage qui est direct et ne nécessite aucun apprentissage, le processus inverse requiert d'estimer la distribution conditionnelle $p(x_{t-1}|x_t)$ qui n'est pas connue analytiquement. Nous avons alors décidé d'entraîner un réseau de neurones $\epsilon_\theta(x_t, t)$ pour prédire le bruit $\xi_0$ ayant été ajouté lors du processus de bruitage. Cette reformulation transforme le problème de débruitage en un problème de régression supervisée où la fonction de perte est simplement l'erreur quadratique moyenne entre le bruit réel et le bruit prédit : $L = \|\xi_0 - \epsilon_\theta(x_t, t)\|^2$. L'avantage de cette approche est que prédire le bruit est plus stable numériquement que de prédire directement la donnée débruitée, car le bruit suit une distribution gaussienne standard.
 
@@ -54,7 +54,7 @@ Fort de notre compréhension acquise sur les données 2D, nous avons entrepris l
 
 Nous avons débuté avec des images de faible résolution (16×16 pixels) pour limiter les coûts de calcul et accélérer les itérations de développement. Nous nous sommes d'ailleurs limités initialement à la génération d'une seule classe de chiffres (le chiffre 6) pour simplifier le problème. Cette approche uni-classe nous a permis de valider notre implémentation et d'ajuster les hyperparamètres avant de généraliser à toutes les classes.
 
-Notre première approche utilisait un schedule linéaire avec $\sigma_t$ variant de 0.0001 à 0.2 sur 50 étapes. Les résultats montraient une tendance à générer des images trop floues, suggérant que le modèle avait du mal à capturer les détails fins. Après analyse, nous avons réalisé que ce schedule était trop agressif : le bruit s'accumulait trop rapidement, rendant l'inversion difficile. Nous avons donc expérimenté avec des schedules plus doux en augmentant le nombre d'étapes à 1000. Cette modification a significativement amélioré la netteté des images générées.
+Notre première approche utilisait un scheduler linéaire avec $\sigma_t$ variant de 0.0001 à 0.2 sur 50 étapes. Les résultats montraient une tendance à générer des images trop floues, suggérant que le modèle avait du mal à capturer les détails fins. Après analyse, nous avons réalisé que ce scheduler était trop agressif : le bruit s'accumulait trop rapidement, rendant l'inversion difficile. Nous avons donc expérimenté avec des schedulers plus doux en augmentant le nombre d'étapes à 200. Cette modification a significativement amélioré la netteté des images générées.
 
 \subsection{Phase 3 : Généralisation avec CIFAR-10}
 
@@ -62,15 +62,14 @@ La dernière phase du projet consistait à appliquer notre approche à des image
 
 Nous avons adapté notre architecture U-Net pour traiter des entrées à 3 canaux. L'entraînement s'est révélé plus long et plus instable que pour MNIST. Nous avons observé que le modèle avait tendance à générer des images très floues et manquant de cohérence structurelle. Cette difficulté s'explique par deux facteurs : d'une part, la diversité des classes dans CIFAR-10 avec 3 canaux de couleurs rend la distribution des données plus ardu ; d'autre part, la résolution accrue amplifie les erreurs de prédiction du bruit.
 
-Pour améliorer les résultats, TODO
-
+Pour améliorer les résultats, nous avons suivi le modèle décrit dans le papier de recherche \footnote{\url{https://arxiv.org/pdf/2006.11239.pdf}} en intégrant des mécanismes d'attention dans notre U-Net. L'attention permet au modèle de se concentrer sur des régions spécifiques de l'image lors de la prédiction du bruit, améliorant ainsi la qualité des détails générés.
 \section{Obstacles rencontrés et solutions apportées}
 
 Au cours de ce projet, nous avons rencontré plusieurs difficultés techniques. La première difficulté majeure concernait l'implémentation correcte du bruitage. Nous avons initialement commis l'erreur de calculer $x_t$ en appliquant récursivement la formule $x_t = \sqrt{\sigma_t}x_{t-1} + \sqrt{1-\sigma_t}\xi$ à partir de $x_0$, ce qui était inefficace. Après relecture du cours, nous avons compris qu'il fallait utiliser la formule utilisant directement $x_0$, ce qui a considérablement simplifié le code et amélioré les performances.
 
-Une autre difficulté concernait le choix des hyperparamètres, en particulier le schedule de bruit. Nous avons constaté empiriquement qu'un schedule trop agressif (avec des valeurs de $\sigma_t$ décroissant rapidement) rendait le processus inverse très difficile à apprendre, tandis qu'un schedule trop conservateur nécessitait un nombre d'étapes prohibitif. Le compromis optimal dépend fortement de la complexité des données : MNIST tolère des schedules plus agressifs étant des images en noir et blanc d'une dimensionalité plus faible que CIFAR-10. Nous avons finalement évalué visuellement la qualité des échantillons générés à différentes étapes de l'entraînement.
+Une autre difficulté concernait le choix des hyperparamètres, en particulier le scheduler de bruit. Nous avons constaté empiriquement qu'un scheduler trop agressif (avec des valeurs de $\sigma_t$ décroissant rapidement) rendait le processus inverse très difficile à apprendre, tandis qu'un scheduler trop conservateur nécessitait un nombre d'étapes prohibitif. Le compromis optimal dépend fortement de la complexité des données : MNIST tolère des schedulers plus agressifs étant des images en noir et blanc d'une dimensionalité plus faible que CIFAR-10.
 
-Enfin, sur le plan computationnel, l'entraînement des modèles, particulièrement pour CIFAR-10, s'est révélé très coûteux en temps de calcul. Sans accès à des GPUs performants, chaque expérience nécessitait plusieurs heures d'entraînement, ce qui a limité le nombre de configurations que nous avons pu tester. Nous avons pallié cette limitation en effectuant d'abord des tests sur de petits sous-ensembles de données.
+Enfin, sur le plan computationnel, l'entraînement des modèles, particulièrement pour CIFAR-10, s'est révélé très coûteux en temps de calcul. Sans accès à des GPUs performants, chaque expérience nécessitait plusieurs heures d'entraînement, ce qui a limité le nombre de configurations que nous avons pu tester. Nous avons pallié cette limitation en effectuant d'abord des tests sur de petits sous-ensembles de données. De plus, nous avons pris soin de sauvegarder les poids de nos modèles afin de pouvoir faire de l'inférence sans avoir à réentraîner à chaque fois.
 
 \section{Résultats et analyse}
 
@@ -96,7 +95,7 @@ Pour la diffusion 2D, le modèle a réussi à reproduire une distribution cible 
 
 \subsection{Résultats sur MNIST}
 
-Sur MNIST en 16×16, nous avons adopté une approche progressive en deux étapes. Dans un premier temps, nous avons développé un modèle uni-classe focalisé uniquement sur la génération du chiffre 6. Cette approche ciblée nous a permis de valider notre implémentation et d'optimiser les hyperparamètres sur un problème de complexité réduite. Le modèle uni-classe a rapidement convergé et générait des chiffres 6 de qualité satisfaisante après seulement 100 époques d'entraînement. Cette expérience nous a permis d'affiner notre compréhension du schedule de bruit et du nombre d'étapes de débruitage optimal.
+Sur MNIST en 16×16, nous avons adopté une approche progressive en deux étapes. Dans un premier temps, nous avons développé un modèle uni-classe focalisé uniquement sur la génération du chiffre 6. Cette approche ciblée nous a permis de valider notre implémentation et d'optimiser les hyperparamètres sur un problème de complexité réduite. Le modèle uni-classe a rapidement convergé et générait des chiffres 6 de qualité satisfaisante après seulement 100 époques d'entraînement. Cette expérience nous a permis d'affiner notre compréhension du scheduler de bruit et du nombre d'étapes de débruitage optimal.
 
 \begin{figure}[h]
 \centering
@@ -105,7 +104,7 @@ Sur MNIST en 16×16, nous avons adopté une approche progressive en deux étapes
 \label{fig:mnist_single}
 \end{figure}
 
-Vous pouvez observer les résultats intermédiaires de reconstruction à différentes étapes de débruitage ci-dessous :
+On peut également observer les résultats intermédiaires de reconstruction à différentes étapes de débruitage ci-dessous :
 
 \begin{figure}[h!]
 \centering
@@ -114,6 +113,8 @@ Vous pouvez observer les résultats intermédiaires de reconstruction à différ
 \label{fig:mnist_denoising}
 \end{figure}
 
+\newpage
+\vspace{2.5cm}
 Fort de cette réussite, nous avons ensuite étendu notre approche à un modèle multi-classe capable de générer n'importe quel chiffre de 0 à 9.
 \begin{figure}[h]
 \centering
@@ -122,13 +123,16 @@ Fort de cette réussite, nous avons ensuite étendu notre approche à un modèle
 \label{fig:mnist_multi}
 \end{figure}
 
+\newpage
 \subsection{Résultats sur CIFAR-10}
 
-Les résultats sur CIFAR-10 sont plus mitigés. Bien que le modèle génère des images qui possèdent des structures de couleurs cohérentes et suggèrent parfois la présence d'objets, la netteté reste limitée et les détails fins sont absents. Cette différence de performance par rapport à MNIST s'explique par plusieurs facteurs : la dimensionnalité accrue (3 canaux versus 1), la plus grande variabilité inter-classes de CIFAR-10, et les limitations de notre architecture U-Net relativement simple. Les modèles de diffusion de pointe pour CIFAR-10 utilisent des U-Nets beaucoup plus profonds avec des mécanismes d'attention et sont entraînés sur des centaines de milliers d'itérations, ce qui dépasse largement nos ressources disponibles.
+Les résultats sur CIFAR-10 sont plus mitigés. Bien que le modèle génère des images qui possèdent des structures de couleurs cohérentes et suggèrent parfois la présence d'objets, la netteté reste limitée et les détails fins sont absents. Cette différence de performance par rapport à MNIST s'explique par plusieurs facteurs : la dimensionnalité accrue (3 canaux versus 1 et 32x32 au lieu de 16x16), la plus grande variabilité inter-classes de CIFAR-10. Notre modèle de diffusion pour CIFAR-10 utilise une U-Net avec un mécanisme d'attention qui permet de capturer plus d'informations. Néanmoins, il faudrait entrainer des modèles plus profond pour de meilleurs résultats, ce qui dépasse largement nos ressources disponibles.
+
+Tout au long de nos expérimentations, nous avons pu observé une amélioration drastique du FID passant de ≃19 à ≃1.8 en ajoutant l'attention et ajustant les schedulers de bruit.
 
 \begin{figure}[h]
 \centering
-\includegraphics[width=0.99\textwidth]{figures/cifar_full.png}
+\includegraphics[width=0.99\textwidth]{figures/cifar10_full.png}
 \caption{Échantillons générés par le meilleur modèle à partir de CIFAR-10.}
 \label{fig:cifar_full}
 \end{figure}
